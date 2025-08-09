@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>generator etykiet kurierskich (A6 → PDF A4)</title>
+  <style>
+    :root{--bg:#f4f6f8}
+    body{font-family:Inter,Segoe UI,Roboto,Arial,Helvetica,sans-serif;margin:0;background:var(--bg);color:#111}
+    header{background:#0b74ff;color:#fff;padding:12px 16px;display:flex;align-items:center;gap:12px}
+    header h1{font-size:16px;margin:0}
+    .wrap{display:flex;gap:12px;padding:12px;height:calc(100vh - 64px);box-sizing:border-box}
+    .panel{background:#fff;border-radius:8px;box-shadow:0 6px 18px rgba(2,6,23,0.08);overflow:auto}
+    .left{width:420px;padding:12px;display:flex;flex-direction:column;gap:8px}
+    .right{flex:1;padding:12px;display:flex;flex-direction:column;gap:8px;align-items:center}
+    label{font-size:13px;color:#333}
+    input[type="text"], textarea, select {width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box}
+    textarea{min-height:84px;resize:vertical}
+    .buttons{display:flex;gap:8px;margin-top:6px}
+    button{padding:9px 12px;border:0;border-radius:6px;cursor:pointer;font-weight:600}
+    button.primary{background:#0b74ff;color:#fff}
+    button.ghost{background:#f0f0f0}
+    .label {
+      width: 105mm;
+      height: 148mm;
+      box-sizing: border-box;
+      border: 1px solid #111;
+      padding: 6mm;
+      background: #fff;
+      color:#000;
+      font-size:12px;
+      position: relative;
+    }
+    .headerRow {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+      gap: 10px;
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .addresses {display:flex;gap:6mm}
+    .addr {width: calc(50% - 3mm); border:1px dashed #999; padding:4px; min-height:40mm; box-sizing:border-box}
+    .addr h4{margin:0;font-size:12px}
+    .metaRow{display:flex;gap:6mm;margin-top:6px}
+    .metaBox{flex:1;border:1px solid #111;padding:6px;text-align:center}
+    .barcodeWrap{position:absolute;left:6mm;right:6mm;bottom:6mm;display:flex;flex-direction:column;align-items:center;gap:6px}
+    svg#barcode{height:22mm}
+    canvas#qrcodeCanvas{width:28mm;height:28mm}
+    .small{font-size:11px;color:#444}
+    .logo {
+      height: 10mm;
+      width: auto;
+    }
+    @media print {
+      body * {visibility: hidden;}
+      .label, .label * {visibility: visible;}
+      .label {position: absolute; left: 0; top: 0; margin: 0;}
+    }
+    @media (max-width:920px){
+      .wrap{flex-direction:column;height:auto}
+      .left{width:100%}
+      .right{width:100%}
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>generator etykiet kurierskich — A6 → PDF A4</h1>
+  </header>
+
+  <div class="wrap">
+    <div class="panel left">
+      <label>Firma kurierska</label>
+      <select id="courierSelect">
+        <option value="inpost">InPost</option>
+        <option value="dpd">DPD</option>
+      </select>
+
+      <label>Numer przesyłki (kod)</label>
+      <input id="number" type="text" value="PL1234567890" />
+
+      <label>Usługa / oznaczenie</label>
+      <select id="service"></select>
+
+      <label>Nadawca (imię, adres, tel)</label>
+      <textarea id="sender">PKM Zawiczyn Sp. z. o. o.
+ul. Warszawska 13
+12-445 Zawiczyn
++48 600 000 000</textarea>
+
+      <label>Odbiorca (imię, adres, tel)</label>
+      <textarea id="recipient">Anna Nowak
+ul. Celowa 25
+80-001 Gdańsk
++48 600 111 222</textarea>
+
+      <label>Dodatkowe info</label>
+      <input id="info" type="text" value="Pobranie: 0.00 PLN" />
+
+      <label>QR (treść)</label>
+      <input id="qrtext" type="text" value="https://tracking.example/PL1234567890" />
+
+      <div class="buttons">
+        <button id="downloadPdfBtn" class="primary">Pobierz PDF (A4)</button>
+        <button id="resetBtn" class="ghost">Przywróć przykładowe</button>
+      </div>
+
+      <div style="margin-top:8px;font-size:13px;color:#555">
+        Zmiany w polach aktualizują podgląd natychmiast. W PDF etykieta trafia na A4 w rozmiarze A6.
+      </div>
+      <div id="statusMessage" style="margin-top:8px;font-size:13px;color:#0b74ff;font-weight:bold;"></div>
+    </div>
+
+    <div class="panel right" style="padding:16px;align-items:center">
+      <div style="background:#fafafa;padding:8px;border-radius:8px;box-shadow:inset 0 1px 0 #fff">
+        <div style="margin-bottom:8px;font-weight:700">Podgląd etykiety (A6) — live</div>
+        <div id="previewContainer" style="width:105mm; max-width:100%; display:flex; justify-content:center">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+
+  <script>
+    const couriers = {
+      inpost: {
+        name: 'InPost',
+        services: ['PACZKOMAT', 'KURIER']
+      },
+      dpd: {
+        name: 'DPD',
+        services: ['DPD Pickup', 'KURIER']
+      }
+    };
+    const logos = {
+      inpost: null,
+      dpd: null
+    };
+    function mmToPx(mm){ return Math.round(mm * (96 / 25.4)); }
+    function buildLabelElement(values){
+      const wrapper = document.createElement('div');
+      wrapper.className = 'label';
+      wrapper.innerHTML = `
+        <div class="headerRow">
+          <div class="header-left">
+            <img id="courierLogo" class="logo" />
+            <div class="service" style="font-weight:700;font-size:14px">${escapeHtml(values.service)}</div>
+          </div>
+          <div class="small">Data: ${escapeHtml((new Date()).toLocaleDateString())}</div>
+        </div>
+        <div class="addresses">
+          <div class="addr">
+            <h4>NADAWCA</h4>
+            <pre id="labelSender" style="white-space:pre-wrap;font-family:inherit;font-size:12px;margin:6px 0 0 0">${escapeHtml(values.sender)}</pre>
+          </div>
+          <div class="addr">
+            <h4>ODBIORCA</h4>
+            <pre id="labelRecipient" style="white-space:pre-wrap;font-family:inherit;font-size:12px;margin:6px 0 0 0">${escapeHtml(values.recipient)}</pre>
+          </div>
+        </div>
+        <div class="metaRow">
+          <div class="metaBox">
+            <div class="small">Nr przesyłki</div>
+            <div id="labelNumber" style="font-weight:700;font-size:14px">${escapeHtml(values.number)}</div>
+          </div>
+          <div class="metaBox">
+            <div class="small">Info</div>
+            <div id="labelInfo">${escapeHtml(values.info)}</div>
+          </div>
+        </div>
+        <div class="small" style="margin-top:6px">Proszę nie zasłaniać kodu ani numeru.</div>
+        <div class="barcodeWrap">
+          <svg id="barcode"></svg>
+          <canvas id="qrcodeCanvas"></canvas>
+        </div>
+      `;
+      return wrapper;
+    }
+    function escapeHtml(s){
+      if(!s) return '';
+      return s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+    }
+    async function updatePreview(){
+      const courierKey = document.getElementById('courierSelect').value;
+      const selectedCourier = couriers[courierKey];
+      const vals = {
+        courier: selectedCourier,
+        number: document.getElementById('number').value || '---',
+        service: document.getElementById('service').value || '',
+        sender: document.getElementById('sender').value || '',
+        recipient: document.getElementById('recipient').value || '',
+        info: document.getElementById('info').value || '',
+        qrtext: document.getElementById('qrtext').value || ''
+      };
+      const container = document.getElementById('previewContainer');
+      container.innerHTML = '';
+      const labelEl = buildLabelElement(vals);
+      container.appendChild(labelEl);
+      const logoEl = labelEl.querySelector('#courierLogo');
+      const logoUrls = {
+        inpost: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/InPost_logo.svg/1200px-InPost_logo.svg.png',
+        dpd: 'https://upload.wikimedia.org/wikipedia/commons/4/4c/DPD_logo%28red%292015.png'
+      };
+      if (logos[courierKey]) {
+        logoEl.src = logos[courierKey];
+      } else {
+        const logoUrl = logoUrls[courierKey];
+        if (logoUrl) {
+          logoEl.src = logoUrl;
+          logoEl.onerror = () => {
+            console.error(`Nie udało się załadować logo z URL: ${logoUrl}`);
+            logoEl.src = `https://placehold.co/100x40/cccccc/333333?text=${selectedCourier.name}`;
+          };
+          logoEl.onload = () => {
+            logos[courierKey] = logoUrl;
+          }
+        } else {
+          logoEl.src = `https://placehold.co/100x40/cccccc/333333?text=${selectedCourier.name}`;
+        }
+      }
+      try {
+        JsBarcode(labelEl.querySelector('#barcode'), vals.number, {
+          format: 'code128',
+          displayValue: false,
+          height: mmToPx(22)/3,
+          width: 2,
+          margin: 0
+        });
+      } catch(e){ console.warn(e); }
+      try {
+        const qrCanvas = labelEl.querySelector('#qrcodeCanvas');
+        const sizePx = mmToPx(28);
+        qrCanvas.width = sizePx;
+        qrCanvas.height = sizePx;
+        const typeNumber = 4;
+        const qr = qrcode(typeNumber, 'L');
+        qr.addData(vals.qrtext || vals.number);
+        qr.make();
+        const cell = Math.floor(sizePx / qr.getModuleCount());
+        const ctx = qrCanvas.getContext('2d');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0,0,qrCanvas.width,qrCanvas.height);
+        ctx.fillStyle = '#000';
+        for(let r=0;r<qr.getModuleCount();r++){
+          for(let c=0;c<qr.getModuleCount();c++){
+            if(qr.isDark(r,c)) ctx.fillRect(c*cell, r*cell, cell, cell);
+          }
+        }
+      } catch(e){ console.warn(e); }
+      document.getElementById('statusMessage').textContent = `Podgląd zaktualizowany dla ${selectedCourier.name}!`;
+    }
+    function updateServiceOptions() {
+      const courierKey = document.getElementById('courierSelect').value;
+      const serviceSelect = document.getElementById('service');
+      const services = couriers[courierKey].services;
+      serviceSelect.innerHTML = '';
+      services.forEach(service => {
+        const option = document.createElement('option');
+        option.value = service;
+        option.textContent = service;
+        serviceSelect.appendChild(option);
+      });
+      updatePreview();
+    }
+    function generateNewTrackingNumber() {
+      const randomDigits = Math.floor(1000000000 + Math.random() * 9000000000);
+      document.getElementById('number').value = `PL${randomDigits}`;
+    }
+    async function generatePdf(single=true){
+      const labelNode = document.querySelector('.label');
+      if(!labelNode) return console.warn('Brak etykiety w podglądzie.');
+      const scale = 3;
+      const canvas = await html2canvas(labelNode, {scale: scale, useCORS: true, backgroundColor:'#ffffff'});
+      const imgData = canvas.toDataURL('image/png');
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({unit:'mm',format:'a4',orientation:'portrait'});
+      const labelW = 105; const labelH = 148;
+      const margin = 10;
+      if(single){
+        pdf.addImage(imgData,'PNG',margin,margin,labelW,labelH,'','FAST');
+      } else {
+        const cols = 2, rows = 2;
+        const gap = 6;
+        const startX = margin;
+        const startY = margin;
+        for(let r=0;r<rows;r++){
+          for(let c=0;c<cols;c++){
+            const x = startX + c*(labelW + gap);
+            const y = startY + r*(labelH + gap);
+            if(x + labelW > 210 - margin || y + labelH > 297 - margin) continue;
+            pdf.addImage(imgData,'PNG',x,y,labelW,labelH,'','FAST');
+          }
+        }
+      }
+      const filename = `etykieta_${document.getElementById('number').value || 'przesylka'}.pdf`;
+      pdf.save(filename);
+    }
+    const inputs = ['courierSelect', 'service', 'sender', 'recipient', 'info', 'qrtext'];
+    inputs.forEach(id => {
+      const el = document.getElementById(id);
+      el.addEventListener('input', (event) => {
+        if (event.target.id !== 'info' && event.target.id !== 'qrtext') {
+          generateNewTrackingNumber();
+        }
+        updatePreview();
+      });
+    });
+    document.getElementById('downloadPdfBtn').addEventListener('click', ()=> generatePdf(true));
+    document.getElementById('downloadPdf4Btn').addEventListener('click', ()=> generatePdf(false));
+    document.getElementById('resetBtn').addEventListener('click', ()=>{
+      document.getElementById('courierSelect').value = 'inpost';
+      updateServiceOptions();
+      generateNewTrackingNumber();
+      document.getElementById('service').value = 'PACZKOMAT';
+      document.getElementById('sender').value = `PKM Zawiczyn Sp. z. o. o.
+ul. Warszawska 13
+12-445 Zawiczyn
++48 600 000 000`;
+      document.getElementById('recipient').value = `Anna Nowak
+ul. Celowa 25
+80-001 Gdańsk
++48 600 111 222`;
+      document.getElementById('info').value = 'Pobranie: 0.00 PLN';
+      document.getElementById('qrtext').value = 'https://tracking.example/PL1234567890';
+      updatePreview();
+    });
+    document.getElementById('courierSelect').addEventListener('change', () => {
+      updateServiceOptions();
+    });
+    updateServiceOptions();
+  </script>
+</body>
+</html>
