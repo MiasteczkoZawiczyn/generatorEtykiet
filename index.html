@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>generator etykiet kurierskich (A6 → PDF A4)</title>
+  <title>Generator etykiet kurierskich (A6 → PDF A4)</title>
   <style>
     :root{--bg:#f4f6f8}
     body{font-family:Inter,Segoe UI,Roboto,Arial,Helvetica,sans-serif;margin:0;background:var(--bg);color:#111}
@@ -70,7 +70,7 @@
 </head>
 <body>
   <header>
-    <h1>generator etykiet kurierskich — A6 → PDF A4</h1>
+    <h1>Generator etykiet kurierskich — A6 → PDF A4</h1>
   </header>
 
   <div class="wrap">
@@ -274,7 +274,7 @@ ul. Celowa 25
       const randomDigits = Math.floor(1000000000 + Math.random() * 9000000000);
       document.getElementById('number').value = `PL${randomDigits}`;
     }
-    async function generatePdf(single=true){
+    async function generatePdf(){
       const labelNode = document.querySelector('.label');
       if(!labelNode) return console.warn('Brak etykiety w podglądzie.');
       const scale = 3;
@@ -284,22 +284,7 @@ ul. Celowa 25
       const pdf = new jsPDF({unit:'mm',format:'a4',orientation:'portrait'});
       const labelW = 105; const labelH = 148;
       const margin = 10;
-      if(single){
-        pdf.addImage(imgData,'PNG',margin,margin,labelW,labelH,'','FAST');
-      } else {
-        const cols = 2, rows = 2;
-        const gap = 6;
-        const startX = margin;
-        const startY = margin;
-        for(let r=0;r<rows;r++){
-          for(let c=0;c<cols;c++){
-            const x = startX + c*(labelW + gap);
-            const y = startY + r*(labelH + gap);
-            if(x + labelW > 210 - margin || y + labelH > 297 - margin) continue;
-            pdf.addImage(imgData,'PNG',x,y,labelW,labelH,'','FAST');
-          }
-        }
-      }
+      pdf.addImage(imgData,'PNG',margin,margin,labelW,labelH,'','FAST');
       const filename = `etykieta_${document.getElementById('number').value || 'przesylka'}.pdf`;
       pdf.save(filename);
     }
@@ -313,8 +298,7 @@ ul. Celowa 25
         updatePreview();
       });
     });
-    document.getElementById('downloadPdfBtn').addEventListener('click', ()=> generatePdf(true));
-    document.getElementById('downloadPdf4Btn').addEventListener('click', ()=> generatePdf(false));
+    document.getElementById('downloadPdfBtn').addEventListener('click', ()=> generatePdf());
     document.getElementById('resetBtn').addEventListener('click', ()=>{
       document.getElementById('courierSelect').value = 'inpost';
       updateServiceOptions();
@@ -339,3 +323,4 @@ ul. Celowa 25
   </script>
 </body>
 </html>
+
